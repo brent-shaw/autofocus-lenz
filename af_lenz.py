@@ -6,7 +6,8 @@ from autofocus import AFSession, AFSample
 from autofocus import AFServiceActivity, AFRegistryActivity, AFProcessActivity, AFApiActivity, AFJavaApiActivity, AFUserAgentFragment, AFMutexActivity, AFHttpActivity, AFDnsActivity, AFBehaviorTypeAnalysis, AFBehaviorAnalysis, AFConnectionActivity, AFFileActivity
 # APK Specific
 from autofocus import AFApkActivityAnalysis, AFApkIntentFilterAnalysis, AFApkReceiverAnalysis, AFApkSensorAnalysis, AFApkServiceAnalysis, AFApkEmbededUrlAnalysis, AFApkRequestedPermissionAnalysis, AFApkSensitiveApiCallAnalysis, AFApkSuspiciousApiCallAnalysis, AFApkSuspiciousFileAnalysis, AFApkSuspiciousStringAnalysis
-import sys, argparse, multiprocessing, os, re
+import sys, argparse, multiprocessing, os, re, time, requests
+from requests import RequestException
 
 __author__  = "Jeff White [karttoon]"
 __email__   = "jwhite@paloaltonetworks.com"
@@ -221,7 +222,10 @@ def af_query(ident,query):
 # Builds the hash library which is used by every other function
 # Returns data as dictionary with each key being the hash and a dictionary value with each section featuring a list {hash:{section:[value1,value2]}}
 
-def hash_library(args):
+def hash_library(args, k = 0):
+    '''
+    k is a counter to determine whether we'll retry.
+    '''
 
     result_data = {}
     input_data  = []
@@ -258,7 +262,14 @@ def hash_library(args):
     pool = multiprocessing.Pool(processes=pool_size)
     # Since we have to pass an iterable to pool.map(), and our worker function requires args to be passed we need to build a dictionary consisting of tuples. e.g:
     # [ (args, hash_1), (args, hash_2), (args, hash_n) ]
-    pool_output = pool.map(hash_worker,[(args,item) for item in input_data])
+    try:
+        pool_output = pool.map(hash_worker,[(args,item) for item in input_data])
+    except requests.exception.RequestException as e:
+        if k > 2:
+            raise Exception("Max number of retries exceeded")
+        else:
+            time.sleep(30)
+            return hash_library(args, k + 1)
     pool.close()
     pool.join()
 
@@ -450,7 +461,7 @@ def common_pieces(args):
                     common_pieces[section].append(value)
 
     common_pieces['count'] = count # Keep track of how many samples processed
-
+    common_pieces['hashes'] = hashes.keys()
     # Clear out behavior descriptions so it doesn't print - doesn't really make sense for this context
     # Comment out to add them back in
     common_pieces['behavior_desc'] = []
