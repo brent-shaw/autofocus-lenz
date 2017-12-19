@@ -48,7 +48,7 @@ from autofocus import \
     AFMacEmbeddedFile, \
     AFMacEmbeddedURL
 
-import sys, argparse, multiprocessing, os, re, json
+import sys, argparse, multiprocessing, os, re, json, logging
 
 __author__  = "Jeff White [karttoon]"
 __email__   = "jwhite@paloaltonetworks.com"
@@ -976,13 +976,16 @@ def tag_check(args):
                 }
 
     # Get tag definitions
+    logging.debug("Getting tag data for tag %s", tag_data['tag_value'])
     tag_info = AFTag.get(tag_data["tag_value"])
     tag_def  = tag_info.tag_definitions
 
     # Get hash info
+    logging.debug("Getting data for sample: %s", tag_data['hash_value'])
     args.query = tag_data["hash_value"]
     args.ident = "hash"
 
+    logging.debug("Getting hash details for sample: %s", tag_data['hash_value'])
     hash_detail = hash_lookup(args, tag_data["hash_value"])
 
     hash_data = build_field_list()
@@ -1061,7 +1064,7 @@ def tag_check(args):
                                     matches[entry_check][section].append(line)
 
         return match_flag
-
+    logging.debug("Found %d queries to check against the sample", len)
     for query in tag_def:
 
         match_flag = 0
@@ -1107,9 +1110,7 @@ def tag_check(args):
         query_check = query_check.replace("\\xad","")
 
         #print "\n[MODIFIED]\n%s\n" % query_check
-
         for sample in AFSample.search(query_check):
-
             if sample.sha256 == tag_data["hash_value"]:
 
                 for entry in query["children"]:
@@ -1152,7 +1153,7 @@ def tag_check(args):
     tag_data['count'] = 1
 
     args.filter = 0
-
+    logging.debug("Finished tag_check function")
     return tag_data
 
 
@@ -1888,9 +1889,24 @@ def main():
     parser.add_argument("-c", "--commonality", help="Commonality percentage for comparison functions, default is 100", metavar="<integer_percent>", type=int, default=100)
     parser.add_argument("-Q", "--quiet",help="Suppress any informational output and only return data.",action="store_true",default=False)
     parser.add_argument("-w", "--write", help="Write output to a file instead of STDOUT.", metavar='<filename>', default=False)
+    parser.add_argument("-dbg", "--debug", action="store_true", help="logging output to help with debugging stuff")
     args = parser.parse_args()
     args.query = args.query.replace("\\", "\\\\")
 
+    if args.debug:
+        LOG_LEVEL = logging.DEBUG
+        logging.basicConfig(level=LOG_LEVEL,
+                    format='%(asctime)s %(levelname)-8s %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    stream=sys.stdout)
+    else:
+        LOG_LEVEL = logging.ERROR
+        logging.basicConfig(level=LOG_LEVEL,
+                    format='%(asctime)s %(levelname)-8s %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    stream=sys.stdout)
+    logging.debug("Debug mode enabled!")
+                                
     if args.ident == "file_hashes":
         hashlist = fetch_from_file(args, args.query)
         # Build an AF query using the hash list that was just generated join the list into a comma-separated string, because this is what some other functions expect.
