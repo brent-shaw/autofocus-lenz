@@ -816,6 +816,40 @@ def mutex_scrape(args):
 
     return mutex_data
 
+
+# Dropped File scraper function
+# Extracts all dropped files from the identified samples
+# BGM filtering is done on the entire line
+
+def dropped_file_scrape(args):
+    dropped_file_data = {"dropped_files":[]}
+    count = 0
+    hashes = hash_library(args)
+    for hsh in hashes:
+        sample_data = hashes[hsh]
+        for entry in sample_data['process']:
+            parts = entry.split(',')
+            try:
+                operator = parts[0]
+                action = parts[1].rstrip().lstrip()
+                target = parts[2]
+                other = parts[3:]
+            except IndexError as e:
+                # This means it wasn't a hash action
+                continue
+            if action == 'hash':
+                sha256 = other[1].lower().rstrip().lstrip()
+                # Don't return the hash of the file we're looking at already.
+                if hsh == sha256:
+                    continue
+                res_string = target + sha256
+                if res_string not in dropped_file_data['dropped_files']:
+                    dropped_file_data['dropped_files'].append(res_string)
+        count += 1
+    dropped_file_data['count'] = count
+    dropped_file_data['hashes'] = hashes.keys()
+    return dropped_file_data
+
 # Service Scraper Function
 # Extracts all service names from the identified samples
 # BGM filtering is done on the entire line
@@ -1322,6 +1356,7 @@ def output_analysis(args, sample_data, funct_type):
         "service",
         "summary",
         "user_agent",
+        "dropped_files"
     ]
 
     if "all" in output:
@@ -1750,7 +1785,8 @@ def main():
         "session_scrape",
         "diff",
         "tag_check",
-        "tag_info"
+        "tag_info",
+        "dropped_file_scrape"
     ]
     session_sections = [
         "account_name",
@@ -1896,7 +1932,7 @@ def main():
     args = parser.parse_args()
     args.query = args.query.replace("\\", "\\\\")
 
-    # Setup logging (separate
+    # Setup logging (separate)
     if args.debug:
         logging.basicConfig(level   = logging.INFO,
                             format  = "%(asctime)s %(levelname)-8s %(message)s",
@@ -1904,9 +1940,9 @@ def main():
                             stream  = sys.stdout)
     else:
         logging.basicConfig(level   = logging.ERROR,
-                            format="%(asctime)s %(levelname)-8s %(message)s",
-                            datefmt="%Y-%m-%d %H:%M:%S",
-                            stream=sys.stdout)
+                            format  = "%(asctime)s %(levelname)-8s %(message)s",
+                            datefmt = "%Y-%m-%d %H:%M:%S",
+                            stream  = sys.stdout)
 
     if args.ident == "file_hashes":
         hashlist = fetch_from_file(args, args.query)
@@ -1963,6 +1999,8 @@ def main():
         out_data = tag_check(args)
     elif args.run == "tag_info":
         tag_info(args)
+    elif args.run == "dropped_file_scrape":
+        out_data = dropped_file_scrape(args)
 
     if "count" not in out_data:
         out_data['count'] = 1
