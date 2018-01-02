@@ -353,20 +353,24 @@ def hash_library(args):
 
     count = 0
     if args.ident == "query":
+        logging.info("Running query: %s", args.query)
         for sample in poll_af(args.query):
             if count < args.limit:
                 input_data.append(sample.sha256)
                 count += 1
             else:
                 break
+        logging.info("Finished running query: %s", args.query)
 
     else:
+        logging.info("Running query: %s", af_query(args.ident,args.query))
         for sample in poll_af(af_query(args.ident,args.query)):
             if count < args.limit:
                 input_data.append(sample.sha256)
                 count += 1
             else:
                 break
+        logging.info("Finished running query: %s", af_query(args.ident,args.query))
 
     # Set the number of workers to be three times the number of cores.
     # These operations are not very CPU-intensive, we can get away with a higher number of processes.
@@ -375,7 +379,9 @@ def hash_library(args):
     pool = multiprocessing.Pool(processes=pool_size)
     # Since we have to pass an iterable to pool.map(), and our worker function requires args to be passed we need to build a dictionary consisting of tuples. e.g:
     # [ (args, hash_1), (args, hash_2), (args, hash_n) ]
+    logging.info("Running queries to get requested sections")
     pool_output = pool.map(hash_worker,[(args,item) for item in input_data])
+    logging.info("Finished running queries for section data")
     pool.close()
     pool.join()
 
@@ -461,7 +467,6 @@ def hash_lookup(args, query):
             for section_map in analysis_data_map:
                 if section == analysis_data_map[section_map]:
                     section_value.append(section_map)
-
     # If there are no counts for the activity, ignore them for the filter
     for sample in AFSample.search(af_query("hash",query)):
 
@@ -826,6 +831,15 @@ def dropped_file_scrape(args):
     count = 0
     hashes = hash_library(args)
     for hsh in hashes:
+        ''' 
+        At the time of writing, for each case we have to process two sections to find possible dropped files
+
+        * Dropped files in the process section contain "hash" as the processes' action
+        * Dropped files in the file section contain "sha256" in the file section
+        We'll handle these two cases in order
+        '''
+
+        # Processes case first
         sample_data = hashes[hsh]
         for entry in sample_data['process']:
             parts = entry.split(',')
@@ -845,6 +859,13 @@ def dropped_file_scrape(args):
                 res_string = target + sha256
                 if res_string not in dropped_file_data['dropped_files']:
                     dropped_file_data['dropped_files'].append(res_string)
+            
+        # File activity case now
+        for entry in sample_data['file']:
+            parts = entry.split(',')
+            print "ayyy"
+            print parts
+        exit()
         count += 1
     dropped_file_data['count'] = count
     dropped_file_data['hashes'] = hashes.keys()
@@ -1919,8 +1940,7 @@ def main():
     parser.add_argument("-q", "--query", help="Value to query Autofocus for.", metavar='<query>', required=True)
     parser.add_argument("-o", "--output", help="Section of data to return. Multiple values are comma separated (no space) or \"all\" for everything, which is default. "
                                                "Sample Sections [" + ", ".join(sample_sections) + "]. "
-                                                                                                  "Session Sections [" + ", ".join(session_sections) + "]. "
-                                                                                                                                                       "Meta Sections [" + ", ".join(meta_sections) + "]", metavar='<section_output>', default="all")
+                                               "Session Sections [" + ", ".join(session_sections) + "]. " + "Meta Sections [" + ", ".join(meta_sections) + "]", metavar='<section_output>', default="all")
     parser.add_argument("-f", "--filter", help="Filter out Benign/Grayware/Malware counts over this number, default 10,000. Use \"suspicious\" and \"highly_suspicious\" for pre-built malware filtering. Use 0 for no filter.", metavar="<number>", default=10000)
     parser.add_argument("-l", "--limit", help="Limit the number of analyzed samples, default 200. Use 0 for no limit.", metavar="<number>", type=int, default=200)
     parser.add_argument("-r", "--run", choices=functions, help="Function to run. [" + ", ".join(functions) + "]", metavar='<function_name>', required=True)
