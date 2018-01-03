@@ -861,11 +861,47 @@ def dropped_file_scrape(args):
                     dropped_file_data['dropped_files'].append(res_string)
             
         # File activity case now
+        dir_filters = ["Documents and Settings\\Administrator\\Local Settings\\Temporary Internet Files\\Content.Word\\",
+                       "Documents and Settings\\Administrator\\Application Data\\Microsoft\\Office\\Recent\\",
+                       "\\Microsoft\\Windows\\Temporary Internet Files\\Content.Word\\",
+                       "\\Microsoft\\Office\\Recent\\",
+                       "documents and settings\\administrator\\~$q",
+                       "\\AppData\\Local\\Microsoft\\Office\\14.0\\OfficeFileCache\\",
+                       "Documents and Settings\\Administrator\\Local Settings\\Temporary Internet Files\\Content.MSO\\",
+                       "\\AppData\\Roaming\\Microsoft\\Templates\\",
+                       "\\AppData\\Roaming\\Microsoft\\Word\\STARTUP\\"
+                     ]
         for entry in sample_data['file']:
+            break_flag = 0 
             parts = entry.split(',')
-            print "ayyy"
-            print parts
-        exit()
+            operator = parts[0]
+            action = parts[1].rstrip().lstrip()
+            detail = parts[2:]
+            if len(detail) < 4:
+                pass
+            else:
+                possible_sha256 = detail[3].rstrip().lstrip().lower()
+                possible_file = detail[0].rstrip().lstrip()
+                if possible_sha256.startswith("sha256="):
+                    # Remove preceding text
+                    possible_sha256 = possible_sha256[7:]
+                    # Ignore if the result is the same as the hash of the file
+                    if possible_sha256 == hsh:
+                        continue
+                    # Prepare result string incase we need it
+                    res_string = possible_file + " " + possible_sha256[7:]
+                    
+                    # Filter files from specific directories
+                    for filt in dir_filters:
+                        if filt.lower() in possible_file.lower():
+                            logging.info("Filtering dropped file %s | %s as it matches filter %s" % (possible_file, possible_sha256, filt))
+                            break_flag = 1
+                            break
+                    if break_flag == 0:
+                        if res_string not in dropped_file_data['dropped_files']:
+                            logging.info("Adding result %s as it didn't match any filters", res_string)
+                            dropped_file_data['dropped_files'].append(res_string)
+
         count += 1
     dropped_file_data['count'] = count
     dropped_file_data['hashes'] = hashes.keys()
